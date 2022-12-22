@@ -1,4 +1,6 @@
 # Nicklas and Daniel FE exercise sets 
+## By Nicklas and Daniel
+## 22.12.2022
 
 # Exercise set 1
 
