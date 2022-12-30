@@ -1,5 +1,5 @@
 # Nicklas and Daniel FE exercise sets 
-## 29 dec 2022 (last updated)
+## 30 dec 2022 (last updated)
 
 # Exercise set 1
 
@@ -1793,6 +1793,472 @@ sort(vBIC)
 # The chosen model is student t because of lower BIC score.
 
 
+
+
+
+
+# Exercise set 8
+
+# Computational part
+
+# Consider two assets yt = (y1,t, y2,t)0 and the portfolio y^p_t = omega_t y_{1,t} + (1 − omega_t)y_{1,t}. 
+# Assume that the distribution of yt+1|Ft is Gaussian and let bμt+1|t = E[yt+1|Ft] and b omegat+1|t = Cov[yt+1|Ft]
+#be the one step ahead predictive mean and covariance matrix, respectively. Assume short selling and:
+
+# i) Write a function that select !t+1 by minimizing the one step ahead portfolio variance.
+# (The minimum variance portfolio).
+
+# Notes:
+# This is a function in the R programming language that computes the weights of a minimum variance portfolio. A minimum variance portfolio is a portfolio that has the lowest possible risk for a given level of expected return.
+# INPUTS:
+# The function takes in a single argument, mSigma, which is the covariance matrix of the assets in the portfolio.
+MinimumVariancePortfolio <- function(mSigma) {
+  #compute the inverse of the covariance matrix
+  mSigmaInv = solve(mSigma)
+  #vector of ones
+  vOnes = matrix(1, nrow = ncol(mSigma))
+  #compute weights
+  vOmega = mSigmaInv %*% vOnes
+  #normalize weights
+  vOmega = vOmega/sum(vOmega)
+  return(vOmega)
+}
+
+
+# ii) Write a function that select omega_{t+1} by minimizing the one step ahead portfolio variance
+# subject to a minimum expected return of k%.
+
+# This function computes the vector of weights
+# that minimize the porfolio variance subject to
+# a fixed return. (It is slide 4 of lecture 15).
+EfficientSet <- function(mSigma, vMu, dK) {
+  
+  # First we find the inverse of sigma
+  mSigma_i = solve(mSigma)
+  # Then we create a vector with two rows and one coulmmn full of 1's
+  vI = matrix(1, nrow = 2)
+  
+  dA = as.numeric(t(vI) %*% mSigma_i %*% vMu)
+  dB = as.numeric(t(vMu) %*% mSigma_i %*% vMu)
+  dC = as.numeric(t(vI) %*% mSigma_i %*% vI)
+  
+  # Looks like determinant of matrix calculation
+  dD = dB*dC - dA^2
+  
+  
+  vG = (dB * (mSigma_i %*% vI) - dA*(mSigma_i  %*% vMu))/dD
+  vH = (dC*(mSigma_i %*% vMu) - dA * (mSigma_i  %*% vI))/dD
+  
+  vOmega = vG + vH*dK
+  dSigma2_p = as.numeric(t(vOmega) %*% mSigma %*% vOmega)
+  
+  return(list("weights" = vOmega,
+              "variance" = dSigma2_p,
+              "mean" = dK))
+}
+
+# Example: Draws the efficient frontier
+# Assume these mean and variance
+mSigma = matrix(c(5, -4,
+                  -4, 15),2, byrow = TRUE)
+vMu = c(2, 5)
+
+# different levels of expected returns
+vK = seq(0.01, 10.0, 0.01)
+
+mFrontier = t(sapply(vK, function(dK) {
+  set = EfficientSet(mSigma, vMu, dK)
+  c(set$mean, set$variance)
+}))
+
+# plot of the Frontier
+plot(mFrontier[,2], mFrontier[,1], type = "l", ylab = "variance", xlab = "mean")
+# This plot shows the efficient frontier for a two-asset portfolio with a given covariance matrix and expected returns. The efficient frontier is a graphical representation of the set of portfolios that have the highest expected return for a given level of risk, or the lowest risk for a given level of expected return.
+# The x-axis of the plot represents the expected return of the portfolio, and the y-axis represents the variance of the portfolio. The curve plotted on the graph represents the efficient frontier, and points along the curve represent portfolios that are efficient, meaning that they are optimal in terms of risk and return.
+library(quantmod)
+library(xts)
+library(zoo)
+aapl <- getSymbols("AAPL", src = "yahoo", from = "2017-01-01", to = "2022-01-01", auto.assign = F)
+aa <- getSymbols("AA", src = "yahoo", from = "2017-01-01", to = "2022-01-01", auto.assign = F)
+
+aapl <- as.numeric(diff(log(aapl[,6])*100)[-1])
+aa <- as.numeric(diff(log(aa[,6])*100)[-1])
+
+#aapl_returns <- Ad(aapl)
+#aa_returns <- Ad(aa)
+returns <- merge(aapl, aa)
+
+cov_matrix <- cov(returns)
+vMu <- c(mean(aapl), mean(aa))
+mSigma <- cov(cbind(aapl, aa))
+# Different levels of expected returns
+vK <- seq(0.01, 10.0, 0.01)
+
+# Compute efficient frontier
+mFrontier <- t(sapply(vK, function(dK) {
+  set <- EfficientSet(mSigma, vMu, dK)
+  c(set$mean, set$variance)
+}))
+
+# Plot efficient frontier
+plot(mFrontier[,2], mFrontier[,1], type = "l", ylab = "variance", xlab = "mean")
+
+
+# iii)
+# Write a function to estimate the CCC model in the Gaussian bivariate case assuming
+# that the univariate models are AR(1)–GARCH(1,1). The function should also return
+# the one step ahead prediction of the conditional mean and covariance matrix. You can
+# use the rugarch package to estimate the univariate models.
+
+
+## INPUTS:
+ # vY1 and vY2 is stock returns
+EstimateCCC <- function(vY1, vY2) {
+  require(rugarch)
+  
+  #Model Specification
+  # GARCH(1,1)
+  ModelSpec = ugarchspec(mean.model = list(armaOrder = c(1, 0)))
+  
+  #Model estimation
+  # First for the variable vY1
+  Fit_1 = ugarchfit(ModelSpec, vY1)
+  # First for the variable vY2
+  Fit_2 = ugarchfit(ModelSpec, vY2)
+  
+  #standardized residuas
+  # Notes:
+  # When standardize = TRUE, the residuals function returns the standardized residuals of the model Fit_2. Standardized residuals are the residuals of the model divided by the standard error of the residuals. Standardized residuals can be used to assess the fit of the model and to identify outliers in the data
+  vZ_1 = residuals(Fit_1, standardize = TRUE)
+  vZ_2 = residuals(Fit_2, standardize = TRUE)
+  
+  #unconditional correlation
+  mR = cor(cbind(vZ_1, vZ_2))
+  
+  ##prediction
+  Forc_1 = ugarchforecast(Fit_1, n.ahead = 1)
+  Forc_2 = ugarchforecast(Fit_2, n.ahead = 1)
+  
+  #one step ahead standard deviations
+  vSigma1_tp1 = as.numeric(sigma(Forc_1))
+  vSigma2_tp1 = as.numeric(sigma(Forc_2))
+  #one step ahead mean
+  vMu1_tp1 = as.numeric(fitted(Forc_1))
+  vMu2_tp1 = as.numeric(fitted(Forc_2))
+  
+  #one step ahead covariance matrix
+  # slide 26 lecture 10 it's H_t
+  mSigma_tp1 = diag(c(vSigma1_tp1, vSigma2_tp1)) %*% mR %*% diag(c(vSigma1_tp1, vSigma2_tp1))
+  #one step ahead mean vector
+  vMu_tp1 = c(vMu1_tp1, vMu2_tp1)
+  
+  #output
+  lOut = list()
+  
+  lOut[["Fit_1"]] = Fit_1
+  lOut[["Fit_2"]] = Fit_2
+  lOut[["mR"]] = mR
+  lOut[["mSigma_tp1"]] = mSigma_tp1
+  lOut[["vMu_tp1"]] = vMu_tp1
+  
+  return(lOut)
+  
+}
+# Example os how to use it for stock returns (aapl and aa) from above
+estimated_results_CCC <- EstimateCCC(aapl, aa)
+
+# iv) 
+# Write a function to estimate the DCC model in the Gaussian bivariate case assuming
+# that the univariate models are AR(1)–GARCH(1,1). The function should also return
+# the one step ahead prediction of the conditional mean and covariance matrix. You can
+# use the rugarch package to estimate the univariate models.
+
+## Name: 
+## INPUTS:
+ # mEta, dA, dB, mQ
+DCCFilter <- function(mEta, dA, dB, mQ) {
+  # Number of columns in mEta
+  iN = ncol(mEta)
+  # Number of rows in mEta
+  iT = nrow(mEta)
+  
+  # initialize the array for the correlations
+  # iT + 1 because we want to compute one-step ahead
+  aCor = array(0, dim = c(iN, iN, iT + 1))
+  # initialize the array for the Q matrices
+  aQ = array(0, dim = c(iN, iN, iT + 1))
+  
+  ## initialization at the unconditional cor
+  aCor[,, 1] = mQ
+  aQ[,,1] = mQ
+  
+  #Compute the first likelihood contribution
+  # Identical to the one in exercise set 6
+  dLLK = mEta[1, , drop = FALSE] %*% solve(aCor[,, 1]) %*% t(mEta[1, , drop = FALSE]) -
+    mEta[1, , drop = FALSE]%*% t(mEta[1, , drop = FALSE]) + log(det(aCor[,, 1]))
+  
+  #main loop
+  for (t in 2:(iT + 1)) {
+    #update the Q matrix
+    # Identical to the one in exercise set 6
+    aQ[,, t] = mQ * (1 - dA - dB) + dA * t(mEta[t - 1, , drop = FALSE]) %*% mEta[t - 1, , drop = FALSE] +
+      dB * aQ[,,t - 1]
+    
+    ## Compute the correlation as Q_tilde^{-1/2} Q Q_tilde^{-1/2}
+    # Identical to the one in exercise set 6
+    aCor[,, t] = diag(sqrt(1/diag(aQ[,, t]))) %*% aQ[,, t] %*% diag(sqrt(1/diag(aQ[,, t])))
+    
+    # This states that we compute the dLLK as long as t is in the observations set iT
+    if (t <= iT) {
+      #augment the likelihood value
+      dLLK = dLLK + mEta[t, , drop = FALSE] %*% solve(aCor[,, t]) %*% t(mEta[t, , drop = FALSE]) -
+        mEta[t, , drop = FALSE] %*% t(mEta[t, , drop = FALSE]) + log(det(aCor[,, t]))
+      
+    }
+  }
+  
+  lOut = list()
+  #remember to include the -1/2 term in the likelihood evaluation
+  #see the equations in the corresponding lecture
+  lOut[["dLLK"]] = -0.5 * dLLK
+  lOut[["aCor"]] = aCor
+  
+  return(lOut)
+}
+
+#DCC estimation
+# StartingDCCPar is a vector of starting parameters for the DCC estimation
+# we will use previous estimates of the DCC parameters as starting value during
+# the for loop in the empirical part. This will speed up the estimation.
+EstimateDCC <- function(vY1, vY2) {
+  require(rugarch)
+  
+  #Model Specification
+  # GARCH(1,1)
+  ModelSpec = ugarchspec(mean.model = list(armaOrder = c(1, 0)))
+  
+  #Model estimation -- univariate
+  Fit_1 = ugarchfit(ModelSpec, vY1)
+  Fit_2 = ugarchfit(ModelSpec, vY2)
+  
+  #standardized residuas
+  vZ_1 = residuals(Fit_1, standardize = TRUE)
+  vZ_2 = residuals(Fit_2, standardize = TRUE)
+  
+  #unconditional correlation
+  # slide 31 lecture 10
+  mR = cor(cbind(vZ_1, vZ_2))
+  
+  #Model estimation -- multivariate
+  
+  ## maximization of the DCC likelihood
+  #vPar = c(0.04, 0.9)
+  # We are conducting science, so we chose our own starting values
+  vPar = c(0.15, 0.5)
+  #maximize the DCC likelihood
+  optimizer = solnp(vPar, fun = function(vPar, mEta, mQ) {
+    
+    Filter = DCCFilter(mEta, vPar[1], vPar[2], mQ)
+    dNLLK = -as.numeric(Filter$dLLK)
+    return(dNLLK)
+    
+  }, ineqfun = function(vPar, ...) {
+    sum(vPar)
+  }, ineqLB = 1e-4, ineqUB = 0.999,
+  LB = c(1e-4, 1e-4), UB = c(0.999, 0.999),
+  mEta = cbind(vZ_1, vZ_2), mQ = mR)
+  
+  vPar = optimizer$pars
+  
+  ##prediction
+  Forc_1 = ugarchforecast(Fit_1, n.ahead = 1)
+  Forc_2 = ugarchforecast(Fit_2, n.ahead = 1)
+  
+  #one step ahead standard deviations
+  vSigma1_tp1 = as.numeric(sigma(Forc_1))
+  vSigma2_tp1 = as.numeric(sigma(Forc_2))
+  #one step ahead mean
+  vMu1_tp1 = as.numeric(fitted(Forc_1))
+  vMu2_tp1 = as.numeric(fitted(Forc_2))
+  
+  #Filter DCC
+  Filter_DCC = DCCFilter(mEta = cbind(vZ_1, vZ_2), vPar[1], vPar[2], mR)
+  
+  #prediction DCC
+  # The final time point is determined by the length of the input time series vY1, and the length(vY1) + 1 index is used to retrieve the value of the correlations matrix at the final time point. The value of mR_tp1 is then set equal to this final value of the correlations matrix.
+  mR_tp1 = Filter_DCC$aCor[,, length(vY1) + 1]
+  
+  #one step ahead covariance matrix
+  # This is done like H in the slides
+  mSigma_tp1 = diag(c(vSigma1_tp1, vSigma2_tp1)) %*% mR_tp1 %*% diag(c(vSigma1_tp1, vSigma2_tp1))
+  #one step ahead mean vector
+  vMu_tp1 = c(vMu1_tp1, vMu2_tp1)
+  
+  #output
+  lOut = list()
+  
+  lOut[["Fit_1"]] = Fit_1
+  lOut[["Fit_2"]] = Fit_2
+  lOut[["Filter_DCC"]] = Filter_DCC
+  lOut[["optimizer"]] = optimizer
+  lOut[["vDCCPar"]] = vPar
+  lOut[["mR"]] = mR
+  lOut[["mSigma_tp1"]] = mSigma_tp1
+  lOut[["vMu_tp1"]] = vMu_tp1
+  
+  return(lOut)
+  
+}
+
+
+
+
+# Empirical part
+# Consider the last 2000 financial returns of Hewlett–Packard (HPQ) and Procter & Gamble
+# (PG) in the dji30ret dataset available in the rugarch package.
+
+# i) Compute the percentage returns.
+
+iT <- 2000
+library(rugarch)
+# why tail function?
+# The tail function is used to select the last iT elements of the dji30ret object. This is likely being done to select the most recent iT elements of the "HPQ" column in the dji30ret object, which contains the return data for the stock with the ticker "HPQ"
+vHPQ <- tail(dji30ret[, "HPQ"] * 100, iT)
+vPG <- tail(dji30ret[, "PG"] * 100, iT)
+vY1 <- vHPQ
+vY2 <- vPG
+# ii) 
+# For each t in (1000, 1001, . . . , 1999):
+
+# a) 
+# Estimate the models of point 2iii) and 2iv) (the CCC and DCC models) using the
+# observations from t − 999 until t.
+
+## we (arbitrarily) set K such that we have an annualized expected return of 7%
+dK = 7/225
+
+#length of the out of sample period
+# if IF = 1000 you get the answer of the Exercise set.
+# here we use IF = 100 because it is faster to run.
+iF = 100
+
+# MVP = minimum variance portefolio
+# 
+aWeights = array(NA, dim = c(iF, 2, 2, 2),
+                 dimnames = list(NULL, c("CCC", "DCC"), c("MVP", "FixMean"), c("omega1", "omega2")))
+
+## it is computationally expensive !!! try with a fixed t before.
+
+for (t in (iT - iF):(iT - 1)) {
+  #Estimate models and make prediction for time t + 1
+  Fit_CCC = EstimateCCC(vY1[(t - iT + iF + 1):t], vY2[(t - iT + iF + 1):t])
+  Fit_DCC = EstimateDCC(vY1[(t - iT + iF + 1):t], vY2[(t - iT + iF + 1):t])
+  
+  #Compute Tangency Portfolio
+  aWeights[t - iT + iF + 1, "CCC", "FixMean", ] = EfficientSet(mSigma = Fit_CCC$mSigma_tp1, vMu = Fit_CCC$vMu_tp1, dK)$weights
+  aWeights[t - iT + iF + 1, "DCC", "FixMean", ] = EfficientSet(mSigma = Fit_DCC$mSigma_tp1, vMu = Fit_DCC$vMu_tp1, dK)$weights
+  
+  #Compute MVP
+  aWeights[t - iT + iF + 1, "CCC", "MVP", ] = MinimumVariancePortfolio(mSigma = Fit_CCC$mSigma_tp1)
+  aWeights[t - iT + iF + 1, "DCC", "MVP", ] = MinimumVariancePortfolio(mSigma = Fit_DCC$mSigma_tp1)
+  
+  cat(paste(t, "\n"))
+  
+}
+
+# b) For both models compute omega_{t+1} using the functions of point 2i) and 2ii) using the
+# one step ahead predictions of the conditional mean and covariance function.
+
+
+
+# c) 
+# Store the four resulting !t+1 in an array of proper dimensions.
+
+#array of portfolio returns computed according to different strategies
+#and models.
+# Here we store the results from above in a matrix called: "mPortfolioReturns"
+mPortfolioReturns = matrix(NA, iF, 4, dimnames = list(NULL, c("CCC-MVP", "CCC-FixMean", "DCC-MVP", "DCC-FixMean")))
+
+mPortfolioReturns[, "CCC-MVP"] = aWeights[, "CCC", "MVP", "omega1"] * tail(vY1, iF) +
+  aWeights[, "CCC", "MVP", "omega2"] * tail(vY2, iF)
+
+mPortfolioReturns[, "DCC-MVP"] = aWeights[, "DCC", "MVP", "omega1"] * tail(vY1, iF) +
+  aWeights[, "DCC", "MVP", "omega2"] * tail(vY2, iF)
+
+mPortfolioReturns[, "CCC-FixMean"] = aWeights[, "CCC", "FixMean", "omega1"] * tail(vY1, iF) +
+  aWeights[, "CCC", "FixMean", "omega2"] * tail(vY2, iF)
+
+mPortfolioReturns[, "DCC-FixMean"] = aWeights[, "DCC", "FixMean", "omega1"] * tail(vY1, iF) +
+  aWeights[, "DCC", "FixMean", "omega2"] * tail(vY2, iF)
+
+
+# iii)
+# For each combination of model and investment strategy compute the series of realized
+# portfolio returns and then compute:
+
+# We compute the following stastistics in one go, and inset it in a matrix
+
+# a) The average portfolio return.
+
+# b) The portfolio standard deviation.
+
+# c) The portfolio Sharpe ratio.
+
+# d) The portfolio kurtosis and skewness coefficients.
+
+# Discuss your results.
+
+# Porfolio statistics
+mStat = matrix(NA, 5, 4, dimnames = list(c("Mean", "SD", "SR", "Kurtosis", "Skewness"),
+                                         c("CCC-MVP", "CCC-TP", "DCC-MVP", "DCC-TP")))
+
+mStat["Mean", ] = colMeans(mPortfolioReturns)
+mStat["SD", ] = apply(mPortfolioReturns, 2, sd)
+mStat["SR", ] = mStat["Mean", ]/mStat["SD", ]
+mStat["Kurtosis", ] = apply(mPortfolioReturns, 2, function(x) mean((x - mean(x))^4)/(sd(x)^4))
+mStat["Skewness", ] = apply(mPortfolioReturns, 2, function(x) mean((x - mean(x))^3)/(sd(x)^3))
+mStat
+
+# Finally
+
+# iv)
+# Report a graphical representation of the portfolio composition according to each combination
+# of model and investment strategy. Discuss your results.
+
+#Graphical representation of the portfolio weights
+# Omega1 represents the weight assigned to asset 1 in the portfolio.
+par(mfrow = c(2, 1))
+
+par(mar = c(2,3,3,2))
+
+plot.ts(aWeights[,, "MVP", "omega1"], plot.type = "single", col = 1:2,
+        ylab = "", xlab = "", main = "Omega1 for CCC-MVP and DCC-MVP")
+
+par(mar = c(2,3,3,2))
+
+legend("topright", legend = c("CCC-MVP", "DCC-MVP"), col = 1:2, lty = 1)
+
+plot.ts(aWeights[,, "TP", "omega1"], plot.type = "single", col = 1:2,
+        ylab = "", xlab = "", main = "Omega1 for CCC-FixMean and DCC-FixMean")
+
+legend("topright", legend = c("CCC-FixMean", "DCC-FixMean"), col = 1:2, lty = 1)
+
+# CCC seems to have larger weight than DCC for the portefolio number 1
+
+plot.ts(aWeights[,, "MVP", "omega2"], plot.type = "single", col = 1:2,
+        ylab = "", xlab = "", main = "Omega2 for CCC-MVP and DCC-MVP")
+
+par(mar = c(2,3,3,2))
+
+legend("topright", legend = c("CCC-MVP", "DCC-MVP"), col = 1:2, lty = 1)
+
+plot.ts(aWeights[,, "TP", "omega2"], plot.type = "single", col = 1:2,
+        ylab = "", xlab = "", main = "Omega1 for CCC-FixMean and DCC-FixMean")
+
+legend("topright", legend = c("CCC-FixMean", "DCC-FixMean"), col = 1:2, lty = 1)
+
+
+# Both models prefer asset 2 to the asset 1. 
 
 
 
