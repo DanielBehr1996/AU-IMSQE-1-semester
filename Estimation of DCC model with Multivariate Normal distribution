@@ -1,0 +1,107 @@
+# Estimation of DCC model with Multivariate Normal distribution
+## by Daniel Behr
+## 22.12.2022
+
+Estimate_DCC_normal <- function(mY) {
+  
+  # QML estimation of Sigma_t
+  
+  Fit_QML = Estimate_DCC(mY)
+  
+  # extract standardized residuals
+  mZ = Fit_QML$mZ
+  
+  iT = nrow(mZ)
+  iP = ncol(mZ)
+  
+  # Estimate a Multivariate Normal distribution
+  # on the standardized residuals
+  
+  dLLK = 0
+  for (t in 1:iT) {
+    tryCatch({
+      dLLK = dLLK + log(det(cov(mZ[t, ])))
+    }, error = function(e) {
+      print(e) # print the error message
+    })
+  }
+  dLLK = -0.5 * dLLK
+  
+  lOut = list()
+  lOut[["Fit_QML"]] = Fit_QML
+  lOut[["dLLK"]] = dLLK
+  
+  return(lOut)
+  
+}
+
+
+# Estimate DCC model with normal distribution 
+# mY needs to be a matrice
+library(rugarch)
+data("dji30ret")
+mY = dji30ret[1:1000, 1:2]
+
+result <- Estimate_DCC_normal(mY)
+
+result$Fit_QML$vPar
+
+# The output result$Fit_QML$vPar is a vector containing the estimated parameters of the DCC model. 
+# Specifically, result$Fit_QML$vPar[1] is the estimated value of the 
+# parameter dA and result$Fit_QML$vPar[2] is the estimated value of the parameter dB. 
+# These parameters are used in the DCC model to capture the time-varying 
+# correlations between the elements of the matrix of returns mY. T
+# he DCC model is a multivariate generalization of the GARCH model, 
+# which is a popular model for modeling the time-varying volatility of financial time series data.
+
+# The DCC model estimates the time-varying correlations between the elements of mY using a time-varying correlation matrix Q_t, which is specified by the parameters dA and dB. The value of Q_t at each time period t is a function of the residuals of the previous time period and the value of Q_{t-1} at the previous time period. The parameter dA controls the amount of persistence in the correlations, while the parameter dB controls the amount of variation in the correlations over time.
+
+#The estimated values of dA and dB in result$Fit_QML$vPar can be used to analyze the time-varying correlations in the matrix of returns mY and to make predictions about the future behavior of the correlations.
+
+# It could be of interest to plot it
+
+
+#install.packages("ggplot2")
+library(ggplot2)
+
+# Extract the DCC correlations from the Fit_QML object
+dcc_correlations <- result$Fit_QML$aCor[1,2,]
+
+# Create a data frame with the time period and DCC correlations
+dcc_df <- data.frame(time_period = 1:length(dcc_correlations), dcc_correlations = dcc_correlations)
+
+# Plot the DCC correlations over time using ggplot2
+ggplot(dcc_df, aes(x = time_period, y = dcc_correlations)) +
+  geom_line() +
+  xlab("Time Period") +
+  ylab("DCC Correlation") +
+  ggtitle("DCC Correlations over Time")
+
+
+
+
+
+# The plot shows the time-varying correlations between each pair of elements in the matrix mY. The x-axis represents the time period, while the y-axis represents the DCC correlation between the elements. The color of the line indicates which pair of elements the correlations correspond to. The plot allows you to visualize how the correlations between the elements of mY change over time.
+
+dcc_correlations <- result$Fit_QML$aCor
+
+#Create a data frame with the time period and DCC correlations for each pair of elements
+
+dcc_df <- data.frame(time_period = rep(1:length(dcc_correlations), each = ncol(dcc_correlations)),
+                     element1 = rep(1:ncol(dcc_correlations), times = length(dcc_correlations)),
+                     element2 = rep(1:ncol(dcc_correlations), times = length(dcc_correlations)),
+                     dcc_correlations = as.vector(dcc_correlations))
+
+#Plot the DCC correlations over time using ggplot2
+
+ggplot(dcc_df, aes(x = time_period, y = dcc_correlations, color = factor(interaction(element1, element2)))) +
+  geom_line() +
+  xlab("Time Period") +
+  ylab("DCC Correlation") +
+  ggtitle("DCC Correlations over Time") +
+  scale_color_discrete(name = "Element Pair")
+
+# It looks like element pair 2.2 refers to the DCC correlation between the second element of the matrix mY and itself (i.e., the correlation between the second element and the second element).
+
+
+
